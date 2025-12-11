@@ -77,6 +77,81 @@ com_port: COM4  # Windows example (change accordingly)
 baud_rate: 9600
 ```
 
+### 4. Application Configuration (Linux)
+
+On Linux, you can configure sliders to control any application by specifying the audio process name in `slider_mapping`.
+
+#### 🔍 How to Find Application Names
+
+**Step 1:** Open the application you want to control (e.g., a game, music player, browser)
+
+**Step 2:** Make sure the app is playing audio
+
+**Step 3:** Run this command in terminal:
+```bash
+pactl list sink-inputs | grep -E "(application.name|application.process.binary)"
+```
+
+**Example output:**
+```
+application.name = "Spotify"
+application.process.binary = "spotify"
+
+application.name = "Firefox"
+application.process.binary = "firefox"
+
+application.name = "CS2"
+application.process.binary = "cs2"
+```
+
+**Step 4:** Use the value from `application.process.binary` in your config
+
+#### 📋 Common Application Names
+
+**Native Linux Apps:**
+```yaml
+slider_mapping:
+  0: master
+  1: spotify          # Spotify
+  2: firefox          # Firefox browser
+  3: discord          # Discord
+```
+
+**Steam/Proton Games (Windows games on Linux):**
+```yaml
+slider_mapping:
+  0: master
+  1: spotify
+  2: wine64-preloader  # All Proton games (64-bit)
+  3: wine-preloader    # Old Proton games (32-bit)
+```
+
+**Native Linux Games:**
+```yaml
+slider_mapping:
+  0: master
+  1: spotify
+  2: dota2            # Dota 2
+  3: csgo             # CS:GO
+```
+
+#### 💡 Pro Tips
+
+- **Steam/Proton games** all use `wine64-preloader` (or `wine-preloader` for 32-bit games)
+- **One slider controls all Proton games** at once (they share the same audio process)
+- **Native Linux games** each have their own process name
+- **Flatpak apps** usually keep their normal name (e.g., `discord`, `spotify`)
+
+#### 🎮 Special Case: deej.current
+
+The `deej.current` feature attempts to automatically detect and control the currently focused window. However, for **most reliable control of Steam/Proton games**, we recommend using `wine64-preloader` directly:
+
+```yaml
+slider_mapping:
+  2: wine64-preloader  # Recommended for Steam/Proton games
+  # 2: deej.current    # Alternative (may not work with all games)
+```
+
 ## 📦 Installation
 
 ### Windows
@@ -191,6 +266,81 @@ com_port: COM4  # Exemplo Windows (mude conforme necessário)
 # com_port: /dev/ttyUSB0  # Exemplo Linux (descomente e mude se estiver usando Linux)
 
 baud_rate: 9600
+```
+
+### 4. Configuração de Aplicações (Linux)
+
+No Linux, você pode configurar os sliders para controlar qualquer aplicação especificando o nome do processo de áudio em `slider_mapping`.
+
+#### 🔍 Como Encontrar o Nome das Aplicações
+
+**Passo 1:** Abra a aplicação que você quer controlar (ex: um jogo, player de música, navegador)
+
+**Passo 2:** Certifique-se que o app está tocando áudio
+
+**Passo 3:** Execute este comando no terminal:
+```bash
+pactl list sink-inputs | grep -E "(application.name|application.process.binary)"
+```
+
+**Exemplo de saída:**
+```
+application.name = "Spotify"
+application.process.binary = "spotify"
+
+application.name = "Firefox"
+application.process.binary = "firefox"
+
+application.name = "CS2"
+application.process.binary = "cs2"
+```
+
+**Passo 4:** Use o valor de `application.process.binary` no seu config
+
+#### 📋 Nomes Comuns de Aplicações
+
+**Apps Nativos do Linux:**
+```yaml
+slider_mapping:
+  0: master
+  1: spotify          # Spotify
+  2: firefox          # Navegador Firefox
+  3: discord          # Discord
+```
+
+**Jogos Steam/Proton (jogos Windows no Linux):**
+```yaml
+slider_mapping:
+  0: master
+  1: spotify
+  2: wine64-preloader  # Todos os jogos Proton (64-bit)
+  3: wine-preloader    # Jogos Proton antigos (32-bit)
+```
+
+**Jogos Nativos do Linux:**
+```yaml
+slider_mapping:
+  0: master
+  1: spotify
+  2: dota2            # Dota 2
+  3: csgo             # CS:GO
+```
+
+#### 💡 Dicas Importantes
+
+- **Jogos Steam/Proton** todos usam `wine64-preloader` (ou `wine-preloader` para jogos 32-bit)
+- **Um slider controla todos os jogos Proton** de uma vez (eles compartilham o mesmo processo de áudio)
+- **Jogos nativos do Linux** cada um tem seu próprio nome de processo
+- **Apps Flatpak** geralmente mantêm o nome normal (ex: `discord`, `spotify`)
+
+#### 🎮 Caso Especial: deej.current
+
+A funcionalidade `deej.current` tenta detectar e controlar automaticamente a janela em foco. Porém, para **controle mais confiável de jogos Steam/Proton**, recomendamos usar `wine64-preloader` diretamente:
+
+```yaml
+slider_mapping:
+  2: wine64-preloader  # Recomendado para jogos Steam/Proton
+  # 2: deej.current    # Alternativa (pode não funcionar com todos os jogos)
 ```
 
 ## 📦 Instalação

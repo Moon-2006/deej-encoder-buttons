@@ -1,6 +1,7 @@
 package deej
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -269,6 +270,84 @@ func (m *sessionMap) handleSliderMoveEvent(event SliderMoveEvent) {
 		// (or another, more catastrophic failure happens)
 		m.refreshSessions(true)
 	}
+}
+
+// handleEncoderDeltaEvent applies an encoder delta using current session volumes.
+// Delta values are interpreted as percentage points on a 0-100 scale.
+// Returns true when the mapped target is already at the requested limit.
+func (m *sessionMap) handleEncoderDeltaEvent(sliderIdx int, delta int) (bool, error) {
+	if delta == 0 {
+		return false, nil
+	}
+
+	if m.lastSessionRefresh.Add(maxTimeBetweenSessionRefreshes).Before(time.Now()) {
+		m.logger.Debug("Stale session map detected on encoder move, refreshing")
+		m.refreshSessions(true)
+	}
+
+	targets, ok := m.deej.config.SliderMapping.get(sliderIdx)
+	if !ok {
+		return false, nil
+	}
+
+	targetFound := false
+	atLimit := false
+	adjustmentFailed := false
+	adjustmentApplied := false
+
+	for _, target := range targets {
+		resolvedTargets := m.resolveTarget(target)
+
+		for _, resolvedTarget := range resolvedTargets {
+			sessions, ok := m.get(resolvedTarget)
+			if !ok {
+				continue
+			}
+
+			targetFound = true
+
+			for _, session := range sessions {
+				current := session.GetVolume()
+				if (delta > 0 && current >= 1.0) || (delta < 0 && current <= 0.0) {
+					atLimit = true
+					continue
+				}
+
+				adjustedPercent := int(current*100 + 0.5)
+				adjustedPercent += delta
+				if adjustedPercent < 0 {
+					adjustedPercent = 0
+				}
+				if adjustedPercent > 100 {
+					adjustedPercent = 100
+				}
+
+				newVolume := float32(adjustedPercent) / 100.0
+				if newVolume == current {
+					continue
+				}
+
+				if err := session.SetVolume(newVolume); err != nil {
+					m.logger.Warnw("Failed to set target session volume from encoder event", "error", err)
+					adjustmentFailed = true
+				} else {
+					adjustmentApplied = true
+				}
+			}
+		}
+	}
+
+	if !targetFound {
+		m.refreshSessions(false)
+		return false, nil
+	}
+
+	if adjustmentFailed {
+		m.refreshSessions(true)
+		return atLimit && !adjustmentApplied, errors.New("one or more session volume adjustments failed")
+	}
+
+	return atLimit && !adjustmentApplied, nil
 }
 
 func (m *sessionMap) targetHasSpecialTransform(target string) bool {

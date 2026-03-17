@@ -3,6 +3,7 @@ package deej
 import (
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 
 	ole "github.com/go-ole/go-ole"
@@ -170,20 +171,22 @@ func (s *masterSession) SetVolume(v float32) error {
 		return errRefreshSessions
 	}
 
-	// Obter volume atual para calcular a diferença
 	currentVolume := s.GetVolume()
 
-	// Calcular diferença de volume (em escala 0.0 - 1.0)
 	volumeDiff := v - currentVolume
 
-	// Cada tecla de volume ajusta aproximadamente 2% (0.02)
+	// Each volume keypress changes the system master volume by roughly 2%.
 	const volumeStepSize = 0.02
+	if volumeDiff == 0 {
+		return nil
+	}
 
-	// Calcular quantas teclas precisamos enviar
-	stepsNeeded := int(volumeDiff / volumeStepSize)
+	stepsNeeded := int(math.Ceil(math.Abs(float64(volumeDiff)) / volumeStepSize))
+	if stepsNeeded < 1 {
+		stepsNeeded = 1
+	}
 
-	if stepsNeeded > 0 {
-		// Volume aumentando - enviar VK_VOLUME_UP
+	if volumeDiff > 0 {
 		s.logger.Debugw("Increasing volume with OSD",
 			"from", fmt.Sprintf("%.2f", currentVolume),
 			"to", fmt.Sprintf("%.2f", v),
@@ -192,10 +195,7 @@ func (s *masterSession) SetVolume(v float32) error {
 		for i := 0; i < stepsNeeded; i++ {
 			sendVolumeKey(VK_VOLUME_UP)
 		}
-	} else if stepsNeeded < 0 {
-		// Volume diminuindo - enviar VK_VOLUME_DOWN
-		stepsNeeded = -stepsNeeded // Tornar positivo
-
+	} else {
 		s.logger.Debugw("Decreasing volume with OSD",
 			"from", fmt.Sprintf("%.2f", currentVolume),
 			"to", fmt.Sprintf("%.2f", v),

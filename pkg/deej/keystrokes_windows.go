@@ -30,8 +30,8 @@ type input struct {
 }
 
 var (
-	user32         = syscall.NewLazyDLL("user32.dll")
-	procSendInput  = user32.NewProc("SendInput")
+	user32Keystrokes         = syscall.NewLazyDLL("user32.dll")
+	procSendInput  = user32Keystrokes.NewProc("SendInput")
 )
 
 func sendKeystrokes(keys []uint16) error {

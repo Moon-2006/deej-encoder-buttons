@@ -36,6 +36,6 @@ jobs:
         with:
           name: deej-windows-${{ matrix.mode }}
           path: |
-            deej.exe
+            deej-${{ matrix.mode }}.exe
             config.yaml
-          if-no-files-found: warn
+          if-no-files-found: error

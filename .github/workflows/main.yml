@@ -8,11 +8,11 @@ on:
 
 jobs:
   build:
-    name: Build
+    name: Build (${{ matrix.os }}, ${{ matrix.mode }}, Go ${{ matrix.go }})
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [windows-latest, ubuntu-latest]
+        os: [windows-latest]
         mode: [release, dev]
         go: ["1.14"]
 
@@ -29,3 +29,13 @@ jobs:
         if: runner.os == 'Windows'
         run: pkg/deej/scripts/windows/build-${{ matrix.mode }}.bat
         shell: cmd
+
+      - name: Upload Windows artifact
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: deej-windows-${{ matrix.mode }}
+          path: |
+            deej.exe
+            config.yaml
+          if-no-files-found: warn

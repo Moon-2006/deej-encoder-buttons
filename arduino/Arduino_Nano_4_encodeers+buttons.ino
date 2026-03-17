@@ -1,11 +1,30 @@
 // ========================================
-// DEEJ WITH 4 ROTARY ENCODERS + BUTTONS
+// DEEJ WITH 4 ROTARY ENCODERS + BUTTONS (RELATIVE MODE)
 // ========================================
 
-const int NUM_SLIDERS = 4;
-const int analogInputs[NUM_SLIDERS] = {A0, A1, A2, A3};
+/*
+ * This sketch replaces the original analog‑style behaviour used by deej's
+ * slider implementation. Instead of reading a fixed analog position from
+ * each encoder and sending a "0|1023|..." formatted line, the encoders
+ * now emit **relative** movement events. Each rotary encoder sends a
+ * message of the form `ENC:<index>:<delta>` whenever it is turned. A
+ * positive delta indicates a clockwise movement and a negative delta
+ * indicates a counter‑clockwise movement. The amount of change is
+ * represented by a single step (±1) but can be adjusted by changing
+ * the `delta` assignment below. Buttons still emit `BTN:<index>` when
+ * pressed.
+ *
+ * In addition, the sketch listens for responses from the host (deej).
+ * When deej clamps a channel at its limit it sends back a line such as
+ * `FAILED:2` to indicate that channel 2 hit a boundary. Upon receiving
+ * this response, the Arduino briefly flashes an LED for the
+ * corresponding encoder. By default all encoders share the built‑in LED
+ * on pin 13; change the `LED_PINS` array if you have dedicated LEDs.
+ */
 
-// PINOS DOS ENCODERS
+const int NUM_ENCODERS = 4;
+
+// Pin definitions for the four encoders (CLK/DT/SW for each)
 #define ENC1_CLK 2
 #define ENC1_DT  3
 #define ENC1_SW  4
@@ -22,189 +41,150 @@ const int analogInputs[NUM_SLIDERS] = {A0, A1, A2, A3};
 #define ENC4_DT  12
 #define ENC4_SW  A0
 
-// ====================================
-// GLOBAL VARIABLES
-// ====================================
-int enc1Pos = 512; 
-int enc2Pos = 512;
-int enc3Pos = 512;
-int enc4Pos = 512;
+// Optional LED pins for each encoder.  If you have individual LEDs for
+// each channel, specify their pins here.  By default all encoders share
+// the built‑in LED on pin 13.
+const int LED_PINS[NUM_ENCODERS] = {13, 13, 13, 13};
 
-int enc1LastCLK, enc2LastCLK, enc3LastCLK, enc4LastCLK;
+// Track the simulated analog position for each encoder.  This is used
+// solely for clamping and is not transmitted directly.
+int encPos[NUM_ENCODERS] = {512, 512, 512, 512};
+int encLastCLK[NUM_ENCODERS];
 
-// Debounce variables
-unsigned long lastBtn1Press = 0;
-unsigned long lastBtn2Press = 0;
-unsigned long lastBtn3Press = 0;
-unsigned long lastBtn4Press = 0;
+// Button debouncing state
+unsigned long lastButtonPress[NUM_ENCODERS] = {0, 0, 0, 0};
 const unsigned long debounceDelay = 300;
 
-// ====================================
-// ENCODERS READING FUNCTIONS
-// ====================================
-
-void readEncoder1() {
-  int currentCLK = digitalRead(ENC1_CLK);
-
-  if (currentCLK != enc1LastCLK && currentCLK == LOW) {
-    if (digitalRead(ENC1_DT) != currentCLK) {
-      enc1Pos += 10;
-      if (enc1Pos > 1023) enc1Pos = 1023;
-    } else {
-      enc1Pos -= 10;
-      if (enc1Pos < 0) enc1Pos = 0;
-    }
-  }
-  enc1LastCLK = currentCLK;
-}
-
-void readEncoder2() {
-  int currentCLK = digitalRead(ENC2_CLK);
-
-  if (currentCLK != enc2LastCLK && currentCLK == LOW) {
-    if (digitalRead(ENC2_DT) != currentCLK) {
-      enc2Pos += 10;
-      if (enc2Pos > 1023) enc2Pos = 1023;
-    } else {
-      enc2Pos -= 10;
-      if (enc2Pos < 0) enc2Pos = 0;
-    }
-  }
-  enc2LastCLK = currentCLK;
-}
-
-void readEncoder3() {
-  int currentCLK = digitalRead(ENC3_CLK);
-
-  if (currentCLK != enc3LastCLK && currentCLK == LOW) {
-    if (digitalRead(ENC3_DT) != currentCLK) {
-      enc3Pos += 10;
-      if (enc3Pos > 1023) enc3Pos = 1023;
-    } else {
-      enc3Pos -= 10;
-      if (enc3Pos < 0) enc3Pos = 0;
-    }
-  }
-  enc3LastCLK = currentCLK;
-}
-
-void readEncoder4() {
-  int currentCLK = digitalRead(ENC4_CLK);
-
-  if (currentCLK != enc4LastCLK && currentCLK == LOW) {
-    if (digitalRead(ENC4_DT) != currentCLK) {
-      enc4Pos += 10;
-      if (enc4Pos > 1023) enc4Pos = 1023;
-    } else {
-      enc4Pos -= 10;
-      if (enc4Pos < 0) enc4Pos = 0;
-    }
-  }
-  enc4LastCLK = currentCLK;
-}
-
-// ====================================
-// BUTTONS FUNCTIONS
-// ====================================
-
-void checkButtons() {
-  if (digitalRead(ENC1_SW) == LOW) {
-    if (millis() - lastBtn1Press > debounceDelay) {
-      Serial.println("BTN:0");
-      lastBtn1Press = millis();
-    }
-  }
-  
-  if (digitalRead(ENC2_SW) == LOW) {
-    if (millis() - lastBtn2Press > debounceDelay) {
-      Serial.println("BTN:1");
-      lastBtn2Press = millis();
-    }
-  }
-  
-  if (digitalRead(ENC3_SW) == LOW) {
-    if (millis() - lastBtn3Press > debounceDelay) {
-      Serial.println("BTN:2");
-      lastBtn3Press = millis();
-    }
-  }
-  
-  if (digitalRead(ENC4_SW) == LOW) {
-    if (millis() - lastBtn4Press > debounceDelay) {
-      Serial.println("BTN:3");
-      lastBtn4Press = millis();
-    }
-  }
-}
-
-// ====================================
-// SETUP
-// ====================================
 void setup() {
   Serial.begin(9600);
-  
+
+  // Configure encoder pins
   pinMode(ENC1_CLK, INPUT_PULLUP);
   pinMode(ENC1_DT, INPUT_PULLUP);
   pinMode(ENC1_SW, INPUT_PULLUP);
-  
+
   pinMode(ENC2_CLK, INPUT_PULLUP);
   pinMode(ENC2_DT, INPUT_PULLUP);
   pinMode(ENC2_SW, INPUT_PULLUP);
-  
+
   pinMode(ENC3_CLK, INPUT_PULLUP);
   pinMode(ENC3_DT, INPUT_PULLUP);
   pinMode(ENC3_SW, INPUT_PULLUP);
-  
+
   pinMode(ENC4_CLK, INPUT_PULLUP);
   pinMode(ENC4_DT, INPUT_PULLUP);
   pinMode(ENC4_SW, INPUT_PULLUP);
-  
-  enc1LastCLK = digitalRead(ENC1_CLK);
-  enc2LastCLK = digitalRead(ENC2_CLK);
-  enc3LastCLK = digitalRead(ENC3_CLK);
-  enc4LastCLK = digitalRead(ENC4_CLK);
-  
+
+  // Configure LED pins
+  for (int i = 0; i < NUM_ENCODERS; i++) {
+    pinMode(LED_PINS[i], OUTPUT);
+    digitalWrite(LED_PINS[i], LOW);
+  }
+
+  // Initialize last CLK states
+  encLastCLK[0] = digitalRead(ENC1_CLK);
+  encLastCLK[1] = digitalRead(ENC2_CLK);
+  encLastCLK[2] = digitalRead(ENC3_CLK);
+  encLastCLK[3] = digitalRead(ENC4_CLK);
+
+  // Small startup delay to allow the host to open the serial port
   delay(1000);
-  for (int i = 0; i < 10; i++) {
-    Serial.println("512|512|512|512");
-    delay(50);
+}
+
+// Main loop
+void loop() {
+  // Read encoders and emit relative deltas
+  readEncoder(0, ENC1_CLK, ENC1_DT);
+  readEncoder(1, ENC2_CLK, ENC2_DT);
+  readEncoder(2, ENC3_CLK, ENC3_DT);
+  readEncoder(3, ENC4_CLK, ENC4_DT);
+
+  // Check buttons and emit BTN events
+  checkButton(0, ENC1_SW);
+  checkButton(1, ENC2_SW);
+  checkButton(2, ENC3_SW);
+  checkButton(3, ENC4_SW);
+
+  // Handle any inbound responses from the host
+  handleResponses();
+
+  delay(1);
+}
+
+// Reads a rotary encoder and sends the delta as an `ENC` message when it moves.
+void readEncoder(int index, int clkPin, int dtPin) {
+  int currentCLK = digitalRead(clkPin);
+  // Detect falling edge on CLK
+  if (currentCLK != encLastCLK[index] && currentCLK == LOW) {
+    int delta = 0;
+    if (digitalRead(dtPin) != currentCLK) {
+      // Clockwise
+      delta = 1;
+    } else {
+      // Counter‑clockwise
+      delta = -1;
+    }
+
+    // Update simulated analog position and clamp
+    int newPos = encPos[index] + delta;
+    if (newPos > 1023) newPos = 1023;
+    if (newPos < 0)    newPos = 0;
+    encPos[index] = newPos;
+
+    // Emit relative movement to host
+    Serial.print("ENC:");
+    Serial.print(index);
+    Serial.print(":");
+    Serial.println(delta);
+  }
+  encLastCLK[index] = currentCLK;
+}
+
+// Debounced button check
+void checkButton(int index, int swPin) {
+  if (digitalRead(swPin) == LOW) {
+    if (millis() - lastButtonPress[index] > debounceDelay) {
+      Serial.print("BTN:");
+      Serial.println(index);
+      lastButtonPress[index] = millis();
+    }
   }
 }
 
-// ====================================
-// LOOP
-// ====================================
-void loop() {
-  static int lastEnc1 = -1;
-  static int lastEnc2 = -1;
-  static int lastEnc3 = -1;
-  static int lastEnc4 = -1;
-  
-  // Reads encoders
-  readEncoder1();
-  readEncoder2();
-  readEncoder3();
-  readEncoder4();
-  
-  // Check buttons
-  checkButtons();
-  
-  // Send values only if changed
-  if (enc1Pos != lastEnc1 || enc2Pos != lastEnc2 || 
-      enc3Pos != lastEnc3 || enc4Pos != lastEnc4) {
-    
-    String output = String(enc1Pos) + "|" + 
-                    String(enc2Pos) + "|" + 
-                    String(enc3Pos) + "|" + 
-                    String(enc4Pos);
-    
-    Serial.println(output);
-    
-    lastEnc1 = enc1Pos;
-    lastEnc2 = enc2Pos;
-    lastEnc3 = enc3Pos;
-    lastEnc4 = enc4Pos;
+// Blink the LED associated with an encoder.  If you have individual LEDs per
+// encoder, set them in LED_PINS.  Otherwise the built‑in LED will blink.
+void blinkLed(int index) {
+  digitalWrite(LED_PINS[index], HIGH);
+  delay(100);
+  digitalWrite(LED_PINS[index], LOW);
+}
+
+// Read and handle inbound messages from the host.  Expected format:
+// "FAILED:<index>" when a volume adjustment attempt hits the limit.
+void handleResponses() {
+  while (Serial.available() > 0) {
+    String resp = Serial.readStringUntil('\n');
+    resp.trim();
+    // Check for failure notification (accept both "failed <idx>" and "FAILED:<idx>")
+    if (resp.startsWith("failed") || resp.startsWith("FAILED")) {
+      int idx = -1;
+      // Determine delimiter position (space or colon)
+      int delimPos = resp.indexOf(' ');
+      if (delimPos == -1) {
+        delimPos = resp.indexOf(':');
+      }
+      if (delimPos != -1) {
+        String idxStr = resp.substring(delimPos + 1);
+        idx = idxStr.toInt();
+      }
+      if (idx >= 0 && idx < NUM_ENCODERS) {
+        blinkLed(idx);
+      } else {
+        // Unknown index: blink all to indicate an error
+        for (int i = 0; i < NUM_ENCODERS; i++) {
+          blinkLed(i);
+        }
+      }
+    }
   }
-  
-  delay(1);
 }

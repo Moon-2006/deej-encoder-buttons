@@ -88,7 +88,7 @@ void readEncoder(int index) {
     int delta = (digitalRead(dtPin) != currentCLK) ? ENCODER_STEP : -ENCODER_STEP;
 
     Serial.print("ENC:");
-    Serial.print(index);
+    Serial.print(index + ENCODER_INDEX_OFFSET);
     Serial.print(":");
     Serial.println(delta);
   }
@@ -155,8 +155,10 @@ void handleResponses() {
         idx = idxStr.toInt();
       }
 
-      if (idx >= 0 && idx < NUM_ENCODERS) {
-        blinkLed(idx);
+      int encoderIdx = idx - ENCODER_INDEX_OFFSET;
+
+      if (encoderIdx >= 0 && encoderIdx < NUM_ENCODERS) {
+        blinkLed(encoderIdx);
       } else {
         for (int i = 0; i < NUM_ENCODERS; i++) {
           blinkLed(i);

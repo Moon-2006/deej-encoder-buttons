@@ -1,49 +1,45 @@
 // ========================================
-// DEEJ WITH ROTARY ENCODERS + BUTTONS (RELATIVE MODE)
+// DEEJ WITH MIXED INPUTS:
+// - Rotary encoders (relative deltas)
+// - Encoder buttons
+// - Potentiometers (absolute 0-1023)
 // ========================================
 
 /*
- * This sketch sends relative encoder movement events to Deej in the format:
- *   ENC:<index>:<delta>
+ * Protocol:
+ * - Encoder movement: ENC:<index>:<delta>
+ * - Encoder button:   BTN:<index>
+ * - Potentiometers:   standard deej line, e.g. "123|456|789"
  *
- * and button presses in the format:
- *   BTN:<index>
+ * Failure response from deej:
+ * - failed <index>
+ * - FAILED:<index>
  *
- * It also listens for failure messages from Deej like:
- *   failed 2
- * or
- *   FAILED:2
- *
- * and blinks the LED for that encoder.
- *
- * =========================
- * TO CHANGE ENCODER COUNT:
- * =========================
- * Only update:
- *   1) NUM_ENCODERS
- *   2) CLK_PINS
- *   3) DT_PINS
- *   4) SW_PINS
- *   5) LED_PINS
+ * On failure, this sketch blinks the LED for that encoder index.
  */
 
 // ===== USER CONFIG =====
 const int NUM_ENCODERS = 1;
+const int NUM_POTENTIOMETERS = 0;
 
 const int CLK_PINS[NUM_ENCODERS] = {2};
 const int DT_PINS[NUM_ENCODERS]  = {3};
 const int SW_PINS[NUM_ENCODERS]  = {4};
-
-// Use one LED per encoder, or repeat 13 to share the built-in LED
 const int LED_PINS[NUM_ENCODERS] = {13};
+
+const int POT_PINS[NUM_POTENTIOMETERS] = {};
+
+// Encoder indexes are offset by the amount of potentiometers so mixed setups
+// don't have both input types fighting over the same deej slider index.
+const int ENCODER_INDEX_OFFSET = NUM_POTENTIOMETERS;
 // =======================
 
-// Internal state
-int encPos[NUM_ENCODERS];
 int encLastCLK[NUM_ENCODERS];
 unsigned long lastButtonPress[NUM_ENCODERS];
+int potValues[NUM_POTENTIOMETERS];
 
 const unsigned long debounceDelay = 300;
+const int ENCODER_STEP = 5;
 
 void setup() {
   Serial.begin(9600);
@@ -56,9 +52,13 @@ void setup() {
     pinMode(LED_PINS[i], OUTPUT);
     digitalWrite(LED_PINS[i], LOW);
 
-    encPos[i] = 512;
     encLastCLK[i] = digitalRead(CLK_PINS[i]);
     lastButtonPress[i] = 0;
+  }
+
+  for (int i = 0; i < NUM_POTENTIOMETERS; i++) {
+    pinMode(POT_PINS[i], INPUT);
+    potValues[i] = 0;
   }
 
   // Give the PC time to open the serial connection
@@ -71,6 +71,11 @@ void loop() {
     checkButton(i);
   }
 
+  if (NUM_POTENTIOMETERS > 0) {
+    readPotentiometers();
+    sendPotentiometerValues();
+  }
+
   handleResponses();
   delay(1);
 }
@@ -78,23 +83,16 @@ void loop() {
 // Reads one encoder and sends a relative delta when it moves
 void readEncoder(int index) {
   int clkPin = CLK_PINS[index];
-  int dtPin  = DT_PINS[index];
+  int dtPin = DT_PINS[index];
 
   int currentCLK = digitalRead(clkPin);
 
-  // Detect falling edge
+  // Detect falling edge and emit relative movement only
   if (currentCLK != encLastCLK[index] && currentCLK == LOW) {
-    int delta = (digitalRead(dtPin) != currentCLK) ? 5 : -5;
+    int delta = (digitalRead(dtPin) != currentCLK) ? ENCODER_STEP : -ENCODER_STEP;
 
-    // Track internal position only for clamping/reference
-    int newPos = encPos[index] + delta;
-    if (newPos > 1023) newPos = 1023;
-    if (newPos < 0)    newPos = 0;
-    encPos[index] = newPos;
-
-    // Send encoder movement
     Serial.print("ENC:");
-    Serial.print(index);
+    Serial.print(index + ENCODER_INDEX_OFFSET);
     Serial.print(":");
     Serial.println(delta);
   }
@@ -115,6 +113,26 @@ void checkButton(int index) {
   }
 }
 
+void readPotentiometers() {
+  for (int i = 0; i < NUM_POTENTIOMETERS; i++) {
+    potValues[i] = analogRead(POT_PINS[i]);
+  }
+}
+
+void sendPotentiometerValues() {
+  String builtString = "";
+
+  for (int i = 0; i < NUM_POTENTIOMETERS; i++) {
+    builtString += String(potValues[i]);
+
+    if (i < NUM_POTENTIOMETERS - 1) {
+      builtString += "|";
+    }
+  }
+
+  Serial.println(builtString);
+}
+
 // Blink LED for one encoder
 void blinkLed(int index) {
   digitalWrite(LED_PINS[index], HIGH);
@@ -122,7 +140,7 @@ void blinkLed(int index) {
   digitalWrite(LED_PINS[index], LOW);
 }
 
-// Read responses from Deej and blink the corresponding LED on failure
+// Read responses from deej and blink the corresponding LED on failure
 void handleResponses() {
   while (Serial.available() > 0) {
     String resp = Serial.readStringUntil('\n');
@@ -141,10 +159,11 @@ void handleResponses() {
         idx = idxStr.toInt();
       }
 
-      if (idx >= 0 && idx < NUM_ENCODERS) {
-        blinkLed(idx);
+      int encoderIdx = idx - ENCODER_INDEX_OFFSET;
+
+      if (encoderIdx >= 0 && encoderIdx < NUM_ENCODERS) {
+        blinkLed(encoderIdx);
       } else {
-        // Unknown index: blink all LEDs
         for (int i = 0; i < NUM_ENCODERS; i++) {
           blinkLed(i);
         }

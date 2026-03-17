@@ -313,13 +313,16 @@ func (m *sessionMap) handleEncoderDeltaEvent(sliderIdx int, delta int) (bool, er
 					continue
 				}
 
-				newVolume := current + (float32(delta) / 100.0)
-				if newVolume < 0.0 {
-					newVolume = 0.0
+				adjustedPercent := int(current*100 + 0.5)
+				adjustedPercent += delta
+				if adjustedPercent < 0 {
+					adjustedPercent = 0
 				}
-				if newVolume > 1.0 {
-					newVolume = 1.0
+				if adjustedPercent > 100 {
+					adjustedPercent = 100
 				}
+
+				newVolume := float32(adjustedPercent) / 100.0
 				if newVolume == current {
 					continue
 				}

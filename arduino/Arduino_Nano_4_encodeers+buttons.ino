@@ -28,10 +28,6 @@ const int SW_PINS[NUM_ENCODERS]  = {4};
 const int LED_PINS[NUM_ENCODERS] = {13};
 
 const int POT_PINS[NUM_POTENTIOMETERS] = {};
-
-// Encoder indexes are offset by the amount of potentiometers so mixed setups
-// don't have both input types fighting over the same deej slider index.
-const int ENCODER_INDEX_OFFSET = NUM_POTENTIOMETERS;
 // =======================
 
 int encLastCLK[NUM_ENCODERS];
